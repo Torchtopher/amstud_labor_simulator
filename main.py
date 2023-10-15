@@ -11,10 +11,16 @@ import textwrap
 import random
 pygame.init()
 
+REASONS_FOR_DEATH = ["Prolonged exposure to toxic chemicals in the air.", "Fatal accident with machinery.", "Dehydration from exhuastion"]
+
+REASONS_FOR_INJURY = ["Broken arm from machinery.", "Burns from hot metal.", "Cuts from sharp metal.", "Inhaling toxic chemicals."]
+
 DIALOGUE = ["Hello there I am Orestes. You are a factory worker in the 1800s. Your goal is to survive. If you are lucky you might have a chance to live a miserable life. More than likley you wil die.              Click anywhere to continue."]
 DIALOGUE.append("To play, simply click the loom, after you click enough times you will get your weekly wage. If you don't have enough money to pay for living things you will die. Click anywhere to continue.")
 DIALOGUE.append("Now you may notice that clicking a black box is not very fun. You are correct. Do you work or you will die. Click anywhere to continue.")
-DIALOGUE.append("You can track your progress in the top right corner. When you character has pushed the rock to the top of the hill, you will have won the game. Click anywhere to continue.")
+DIALOGUE.append("You can track your progress in the top right corner. When you are able to buy your own house, you will have won the game. Click anywhere to continue.")
+DIALOGUE.append("The house you are trying to buy costs $900. Good luck. Click anywhere to continue.")
+
 # colors
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -22,6 +28,8 @@ GRAY = (128, 128, 128)
 LIGHT_GRAY = (192, 192, 192)
 RED = (255, 0, 0)
 LIGHT_RED = (255, 128, 128)
+BLUE = (0, 0, 255)
+GREEN = (0, 255, 0) 
 
 # make a window
 WIDTH = 1920
@@ -87,6 +95,9 @@ money = 0
 user_has_into = False
 draw_text = True 
 current_text = ""
+progress = 0
+progress_MAXWIDTH = 500
+injury_state = [False, 0]
 
 def _talk(text):
     # make character talk
@@ -121,32 +132,85 @@ def advance_intro():
     if len(DIALOGUE) == 0:
         user_has_into = True
 
+def injury_screen(msg):
+    global money
+    FONT = pygame.font.SysFont("Arial", 70)
+    say_message("You have been injured: " + msg + " You will be unable to work for a while and have lost money.")
+    if random.randint(1, 2) == 1:
+        money /= 2
+    else:
+        money -= 10
+    pygame.display.flip()
+    pygame.display.update()
+    # stop all sound effects
+    for sound in sound_effects:
+        sound.stop()
+    injury_state[0] = True   
+
 def die_screen(msg=None):
     # make screen go black
     screen.fill(BLACK)
     # display text in red and different font
     FONT = pygame.font.SysFont("Arial", 100)
-    screen.blit(FONT.render("You died", True, RED), (WIDTH/2-100, HEIGHT/2-100))
+    tiny_font = pygame.font.SysFont("Arial", 60)
+
+    screen.blit(FONT.render("You died:", True, RED), (WIDTH/2-100, HEIGHT/2-100))
     if msg:
-        screen.blit(FONT.render(msg, True, RED), (WIDTH/2-900, HEIGHT/2))
+        screen.blit(tiny_font.render(msg, True, RED), (WIDTH/2-900, HEIGHT/2))
     pygame.display.flip()
     time.sleep(3)
     # launch game again and kill this one
     os.execl(sys.executable, sys.executable, *sys.argv)
 
+def win_screen():
+    # make screen go black
+    screen.fill(BLACK)
+    # display text in red and different font
+    FONT = pygame.font.SysFont("Arial", 70)
+
+    screen.blit(FONT.render("You won? At what cost though...", True, GREEN), (WIDTH/2-700, HEIGHT/2-100))
+    for sound in sound_effects:
+        sound.stop()
+    pygame.display.flip()
+    time.sleep(6)
+    # launch game again and kill this one
+    os.execl(sys.executable, sys.executable, *sys.argv)
+
+def safe_div(a, b):
+    if b == 0:
+        return 0
+    else:
+        return a/b
+
 last_update = time.time()
 
+was_in_debt = False 
+
 while running:
+    if money >= 900: 
+        win_screen()
     # every 7 seconds, subtract weekly expenses from money
     if user_has_into and time.time() - last_update >= 7:
-        money -= 5
-        
+        money -= 3
+        if money < 0:
+            if was_in_debt:
+                die_screen(msg="You were unable to pay for living expenses")
+            was_in_debt = True
+   
         last_update = time.time()
 
     pos = pygame.mouse.get_pos()
 
     # draw background
     screen.blit(background, (0, 0))
+    # progress bar for money out of 900
+    progress = min(safe_div(money, 900), 1)*progress_MAXWIDTH
+
+
+    screen.blit(pygame.font.SysFont("Arial", 60).render("Progress:", True, BLUE), (100, 50))
+    # blit rectangle for progress bar
+    pygame.draw.rect(screen, BLUE, (100, 125, progress, 50))
+    pygame.draw.rect(screen, BLACK, (100, 125, progress_MAXWIDTH, 50), 5)
 
     # blit character to the bottom left
     screen.blit(character, (0, HEIGHT-character.get_height()))
@@ -163,13 +227,24 @@ while running:
     # start intro dialogue
     if current_text == "" and not user_has_into:
         advance_intro()
-
+    
+    if random.randint(1, 4000) == 1 and not injury_state[0]:
+        injury_screen(msg=random.choice(REASONS_FOR_INJURY))
+    
+    if injury_state[0]:
+        injury_state[1] += 1
+        if injury_state[1] >= 700:
+            injury_state[0] = False
+            injury_state[1] = 0
+            draw_text = False
+    
     # event loop
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
         if event.type == pygame.MOUSEBUTTONDOWN:
-
+            if total_clicks % 100 == 0 and total_clicks != 0:
+                injury_screen(msg=random.choice(REASONS_FOR_INJURY))
             if not user_has_into:
                 advance_intro()
                 if user_has_into:
@@ -182,13 +257,15 @@ while running:
                     sound_effects[random.randint(0, len(sound_effects)-1)].play()
                 
                 if random.randint(1, 1000) == 1:
-                    die_screen(msg="Unable to pay for living expenses")
+                    die_screen(msg=random.choice(REASONS_FOR_DEATH))
+                
                 clicks_since_last_pay += 1
                 total_clicks += 1
                 print(f"clicked {total_clicks} times ")
 
             if clicks_since_last_pay >= needed_clicks:
                 money += round(random.random()*2, 2)
+                money = round(money, 2)
                 clicks_since_last_pay = 0
                 needed_clicks = random.randint(5, 10)
 
