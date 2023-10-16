@@ -55,6 +55,11 @@ character = pygame.transform.scale(character, (int(character.get_width()*1.5), i
 # load speech bubble image
 speech_bubble = pygame.image.load("images/speechbubble.png")
 
+# load rat image
+rat = pygame.image.load("images/rat.jpeg")
+# stretch rat image by 20% on X
+rat = pygame.transform.scale(rat, (int(rat.get_width()*1.5), rat.get_height()))
+
 # scale down by 50%
 speech_bubble = pygame.transform.scale(speech_bubble, (int(speech_bubble.get_width()*0.5), int(speech_bubble.get_height()*0.5)))
 
@@ -67,6 +72,41 @@ for file in os.listdir("images"):
 # play all for intro
 for sound in sound_effects:
     sound.play()
+
+class Rat:
+    def __init__(self, x, y, width, height, color):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.color = color
+        self.speed = 10
+        self.visible = False
+        self.direction = random.choice(["left", "right"])
+        # mirror image if going left
+        if self.direction == "left":
+            self.image = pygame.transform.flip(rat, True, False)
+        else:
+            self.image = rat
+    
+    def draw(self):
+        if self.visible:
+            # draw rat using rat image
+            screen.blit(self.image, (self.rect.x, self.rect.y))
+    
+    def move(self):
+        if self.direction == "left":
+            self.rect.x -= self.speed
+        else:
+            self.rect.x += self.speed
+                
+        if self.rect.x <= 0:
+            self.direction = "right"
+            self.image = rat
+            print("rat is not visible")
+        elif self.rect.x >= WIDTH:
+            self.image = pygame.transform.flip(rat, True, False)
+            self.direction = "left"
+            print("rat is not visible will be going left")
+        
+        self.draw()
 
 
 # make a simple rectangle that can be clicked on to get money
@@ -176,6 +216,16 @@ def win_screen():
     # launch game again and kill this one
     os.execl(sys.executable, sys.executable, *sys.argv)
 
+def check_injury_state():
+    global injury_state
+    global draw_text
+    if injury_state[0]:
+        injury_state[1] += 1
+        if injury_state[1] >= 700:
+            injury_state[0] = False
+            injury_state[1] = 0
+            draw_text = False
+
 def safe_div(a, b):
     if b == 0:
         return 0
@@ -185,24 +235,40 @@ def safe_div(a, b):
 last_update = time.time()
 
 was_in_debt = False 
+rat_obj = Rat(0, HEIGHT-200, 200, 200, BLACK)
+rat_frames_visible = -1
 
 while running:
+
     if money >= 900: 
         win_screen()
     # every 7 seconds, subtract weekly expenses from money
     if user_has_into and time.time() - last_update >= 7:
-        money -= 3
         if money < 0:
             if was_in_debt:
                 die_screen(msg="You were unable to pay for living expenses")
             was_in_debt = True
-   
+        else:
+            was_in_debt = False
         last_update = time.time()
+        money -= 3
+
 
     pos = pygame.mouse.get_pos()
 
     # draw background
     screen.blit(background, (0, 0))
+    if rat_frames_visible == -1 and random.randint(1, 300) == 1:
+        rat_obj.visible = True
+        rat_frames_visible = 1
+    elif rat_frames_visible > 0:
+        rat_frames_visible += 1
+        if rat_frames_visible >= 600:
+            print("rat is NOT GOING visible")
+            rat_obj.visible = False
+            rat_frames_visible = -1
+    rat_obj.move()
+    rat_obj.draw()
     # progress bar for money out of 900
     progress = min(safe_div(money, 900), 1)*progress_MAXWIDTH
 
@@ -218,25 +284,21 @@ while running:
     if draw_text:
         screen.blit(speech_bubble, (200, HEIGHT-character.get_height()-speech_bubble.get_height()+350))
         _talk(current_text)
-    else:
-        # display money in top right corner
-        FONT = pygame.font.SysFont("Arial", 60)
-        screen.blit(FONT.render(f"Money: ${money}", True, BLACK), (WIDTH-400, 100))
+    
+    # display money in top right corner
+    FONT = pygame.font.SysFont("Arial", 60)
+    screen.blit(FONT.render(f"Money: ${money}", True, BLACK), (WIDTH-400, 100))
 
     money_rect.draw()
     # start intro dialogue
     if current_text == "" and not user_has_into:
         advance_intro()
     
-    if random.randint(1, 4000) == 1 and not injury_state[0]:
+    if random.randint(1, 6000) == 1 and not injury_state[0]:
         injury_screen(msg=random.choice(REASONS_FOR_INJURY))
     
-    if injury_state[0]:
-        injury_state[1] += 1
-        if injury_state[1] >= 700:
-            injury_state[0] = False
-            injury_state[1] = 0
-            draw_text = False
+    check_injury_state()
+
     
     # event loop
     for event in pygame.event.get():
@@ -244,6 +306,7 @@ while running:
             running = False
         if event.type == pygame.MOUSEBUTTONDOWN:
             if total_clicks % 100 == 0 and total_clicks != 0:
+                check_injury_state()
                 injury_screen(msg=random.choice(REASONS_FOR_INJURY))
             if not user_has_into:
                 advance_intro()
